@@ -2,12 +2,27 @@ import pytest
 from fastapi.testclient import TestClient
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from app.main import app
+from app.main import app, fake_users_db, revoked_tokens
 
 client = TestClient(app)
 
 USER = {"username": "testuser", "email": "test@example.com", "password": "SecurePass123!"}
 
+# ─── Rate Limiter'ı Test Sırasında Kapatma Ayarı ─────────────────────────────
+@pytest.fixture(autouse=True)
+def setup_and_teardown():
+    # Her test fonksiyonu çalışmadan önce veritabanını sıfırla (Testlerin çakışmaması için)
+    fake_users_db.clear()
+    revoked_tokens.clear()
+    
+    # Testler çok hızlı çalıştığı için Rate Limiter'ı test süresince devre dışı bırakıyoruz
+    if hasattr(app.state, "limiter"):
+        app.state.limiter.enabled = False
+    yield
+    # Test bittikten sonra güvenlik duvarını normal hayata hazır olması için tekrar açıyoruz
+    if hasattr(app.state, "limiter"):
+        app.state.limiter.enabled = True
+# ─────────────────────────────────────────────────────────────────────────────
 
 def test_register():
     r = client.post("/auth/register", json=USER)
